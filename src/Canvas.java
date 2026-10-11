@@ -15,7 +15,6 @@ import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.List;
 
-
 /**
  * Minimal class for drawing pixels
  */
@@ -25,7 +24,6 @@ public class Canvas {
     private final RasterBI image;
 
     private final LineRasterizer lineRasterizer = new LineRasterizerNaive();
-
     private final PolygonRasterizer polygonRasterizer = new PolygonRasterizer();
     private final int backgroundColor = 0x000000;
     private final List<LineSegment> lineSegments = new ArrayList<>();
@@ -35,6 +33,7 @@ public class Canvas {
     private boolean isDragging = false;
     private boolean hasDragged = false;
     private boolean isLineMode = true;
+    private int editPointIndex = -1;
 
     public Canvas(final int width, final int height) {
         JFrame frame = new JFrame("UHK 2026 PGRF1 | Ukol1 | C04 ");
@@ -64,32 +63,51 @@ public class Canvas {
                     lineSegments.clear();
                     isDragging = false;
                     hasDragged = false;
+                    editPointIndex = -1;
+                    lineStartPoint = null;
                     redraw();
                 } else if (e.getKeyCode() == KeyEvent.VK_E) {
                     isLineMode = !isLineMode;
                     isDragging = false;
                     hasDragged = false;
+                    editPointIndex = -1;
+                    lineStartPoint = null;
                     redraw();
                 }
-
             }
         });
 
         MouseAdapter mouseAdapter = new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
-                if (isLineMode) {
-                    if (lineStartPoint == null) {
-                        lineStartPoint = new Point(e.getX(), e.getY());
+                if (SwingUtilities.isRightMouseButton(e)) {
+                    if (!isLineMode && polygon.getSize() > 0) {
+                        double minDistance = Double.MAX_VALUE;
+                        for (int i = 0; i < polygon.getSize(); i++) {
+                            Point pt = polygon.getPoint(i);
+                            double dist = distance(e.getX(), e.getY(), pt.x(), pt.y());
+                            if (dist < minDistance && dist < 20) {
+                                minDistance = dist;
+                                editPointIndex = i;
+                            }
+                        }
+                    }
+                    return;
+                }
+
+                if (SwingUtilities.isLeftMouseButton(e)) {
+                    if (isLineMode) {
+                        if (lineStartPoint == null) {
+                            lineStartPoint = new Point(e.getX(), e.getY());
+                        } else {
+                            lineSegments.add(new LineSegment(lineStartPoint, new Point(e.getX(), e.getY())));
+                            lineStartPoint = null;
+                        }
                         hasDragged = false;
                     } else {
-                        lineSegments.add(new LineSegment(lineStartPoint, new Point(e.getX(), e.getY())));
-                        lineStartPoint = null;
-                        hasDragged = false;
-                    }
-                } else {
-                    if (polygon.getSize() == 0) {
-                        polygon = polygon.withPoint(new Point(e.getX(), e.getY()));
+                        if (polygon.getSize() == 0) {
+                            polygon = polygon.withPoint(new Point(e.getX(), e.getY()));
+                        }
                     }
                 }
                 currentMousePoint = new Point(e.getX(), e.getY());
@@ -99,10 +117,21 @@ public class Canvas {
 
             @Override
             public void mouseDragged(MouseEvent e) {
-                hasDragged = true;
-                currentMousePoint = new Point(e.getX(), e.getY());
-                redraw();
+                if (SwingUtilities.isRightMouseButton(e)) {
+                    if (!isLineMode && editPointIndex != -1) {
+                        polygon = polygon.updatePoint(editPointIndex, new Point(e.getX(), e.getY()));
+                        redraw();
+                    }
+                    return;
+                }
+
+                if (SwingUtilities.isLeftMouseButton(e)) {
+                    hasDragged = true;
+                    currentMousePoint = new Point(e.getX(), e.getY());
+                    redraw();
+                }
             }
+
             @Override
             public void mouseMoved(MouseEvent e) {
                 currentMousePoint = new Point(e.getX(), e.getY());
@@ -111,19 +140,32 @@ public class Canvas {
 
             @Override
             public void mouseReleased(MouseEvent e) {
-                isDragging = false;
-                if (isLineMode) {
-                    if (lineStartPoint != null && hasDragged) {
-                        lineSegments.add(new LineSegment(lineStartPoint, new Point(e.getX(), e.getY())));
-                        lineStartPoint = null;
-                        hasDragged = false;
-                    }
-                } else {
-                    polygon = polygon.withPoint(new Point(e.getX(), e.getY()));
+                if (SwingUtilities.isRightMouseButton(e)) {
+                    editPointIndex = -1;
+                    return;
                 }
-                redraw();
+
+                if (SwingUtilities.isLeftMouseButton(e)) {
+                    isDragging = false;
+                    if (isLineMode) {
+                        if (lineStartPoint != null && hasDragged) {
+                            lineSegments.add(new LineSegment(lineStartPoint, new Point(e.getX(), e.getY())));
+                            lineStartPoint = null;
+                            hasDragged = false;
+                        }
+                    } else {
+                        if (polygon.getSize() >= 3) {
+                            int edgeIndex = getClosestEdgeIndex(e.getX(), e.getY());
+                            polygon = polygon.insertPoint(edgeIndex + 1, new Point(e.getX(), e.getY()));
+                        } else {
+                            polygon = polygon.withPoint(new Point(e.getX(), e.getY()));
+                        }
+                    }
+                    redraw();
+                }
             }
         };
+
         panel.addMouseListener(mouseAdapter);
         panel.addMouseMotionListener(mouseAdapter);
 
@@ -132,7 +174,6 @@ public class Canvas {
 
         panel.setFocusable(true);
         panel.grabFocus();
-
     }
 
     static void main() {
@@ -140,27 +181,66 @@ public class Canvas {
     }
 
     private void redraw() {
-        image.clear(backgroundColor);
-
         int lineColor = 0xFF0000;
         int polygonColor = 0x00FF00;
+        image.clear(backgroundColor);
 
         for (LineSegment lineSegment : lineSegments) {
             lineRasterizer.draw(image, lineSegment.p1().x(), lineSegment.p1().y(), lineSegment.p2().x(), lineSegment.p2().y(), lineColor);
         }
-
         polygonRasterizer.draw(image, polygon, lineRasterizer, polygonColor);
 
         if (isLineMode && lineStartPoint != null) {
-            lineRasterizer.draw(image, lineStartPoint.x(), lineStartPoint.y(), currentMousePoint.x(), currentMousePoint.y(), lineColor);
-        } else if (!isLineMode && polygon.getSize() > 0) {
-            Point lastPoint = polygon.getPoint(polygon.getSize() - 1);
-            lineRasterizer.draw(image, lastPoint.x(), lastPoint.y(), currentMousePoint.x(), currentMousePoint.y(), polygonColor);
-        }if (polygon.getSize() > 1) {
-            Point firstPoint = polygon.getPoint(0);
-            lineRasterizer.draw(image, firstPoint.x(), firstPoint.y(), currentMousePoint.x(), currentMousePoint.y(), polygonColor);
+            if (currentMousePoint != null) {
+                lineRasterizer.draw(image, lineStartPoint.x(), lineStartPoint.y(), currentMousePoint.x(), currentMousePoint.y(), lineColor);
+            }
+        } else if (!isLineMode && polygon.getSize() > 0 && currentMousePoint != null && editPointIndex == -1) {
+            if (polygon.getSize() >= 3) {
+                int edgeIndex = getClosestEdgeIndex(currentMousePoint.x(), currentMousePoint.y());
+                Point p1 = polygon.getPoint(edgeIndex);
+                Point p2 = polygon.getPoint((edgeIndex + 1) % polygon.getSize());
+                lineRasterizer.draw(image, p1.x(), p1.y(), currentMousePoint.x(), currentMousePoint.y(), polygonColor);
+                lineRasterizer.draw(image, p2.x(), p2.y(), currentMousePoint.x(), currentMousePoint.y(), polygonColor);
+            } else {
+                Point lastPoint = polygon.getPoint(polygon.getSize() - 1);
+                lineRasterizer.draw(image, lastPoint.x(), lastPoint.y(), currentMousePoint.x(), currentMousePoint.y(), polygonColor);
+                if (polygon.getSize() > 1) {
+                    Point firstPoint = polygon.getPoint(0);
+                    lineRasterizer.draw(image, firstPoint.x(), firstPoint.y(), currentMousePoint.x(), currentMousePoint.y(), polygonColor);
+                }
+            }
         }
 
         panel.repaint();
+    }
+
+    private double distance(double x1, double y1, double x2, double y2) {
+        return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+    }
+
+    private int getClosestEdgeIndex(int x, int y) {
+        double minDistance = Double.MAX_VALUE;
+        int closestIndex = 0;
+        for (int i = 0; i < polygon.getSize(); i++) {
+            Point p1 = polygon.getPoint(i);
+            Point p2 = polygon.getPoint((i + 1) % polygon.getSize());
+            double dist = distancePointToSegment(x, y, p1.x(), p1.y(), p2.x(), p2.y());
+            if (dist < minDistance) {
+                minDistance = dist;
+                closestIndex = i;
+            }
+        }
+        return closestIndex;
+    }
+
+    private double distancePointToSegment(double px, double py, double x1, double y1, double x2, double y2) {
+        double l2 = Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2);
+        if (l2 == 0) {
+            return distance(px, py, x1, y1);
+        }
+        double t = Math.max(0, (Math.min(1, ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2)));
+        double projX = x1 + t * (x2 - x1);
+        double projY = y1 + t * (y2 - y1);
+        return distance(px, py, projX, projY);
     }
 }
