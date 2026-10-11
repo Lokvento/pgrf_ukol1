@@ -6,15 +6,49 @@ public class LineRasterizerNaive implements LineRasterizer {
 
     @Override
     public void draw(final Raster raster,
-                     final int c1,
-                     final int r1,
-                     final int c2,
-                     final int r2,
-                     final int color) {
+                     int c1,
+                     int r1,
+                     int c2,
+                     int r2,
+                     int color) {
 
-        // TODO
-        // all quadrants
-        // correct line orientation
+        int dx = c2 - c1;
+        int dy = r2 - r1;
 
+        if (Math.abs(dx) >= Math.abs(dy)) {
+            if (c1 > c2) {
+                int temp = c1;
+                c1 = c2;
+                c2 = temp;
+                temp = r1;
+                r1 = r2;
+                r2 = temp;
+            }
+            if (c1 == c2) return;
+
+            final double k = (double) (r2 - r1) / (c2 - c1);
+            final double q = r1 - k * c1;
+            for (int x = c1; x <= c2; x++) {
+                final double y = k * x + q;
+                raster.setColor(x, (int) Math.round(y), color);
+            }
+        } else {
+            if (r1 > r2) {
+                int temp = c1;
+                c1 = c2;
+                c2 = temp;
+                temp = r1;
+                r1 = r2;
+                r2 = temp;
+            }
+            if (r1 == r2) return;
+
+            final double k = (double) (c2 - c1) / (r2 - r1);
+            final double q = c1 - k * r1;
+            for (int y = r1; y <= r2; y++) {
+                final double x = k * y + q;
+                raster.setColor( (int) Math.round(x),y, color);
+            }
+        }
     }
 }
