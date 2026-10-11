@@ -116,6 +116,7 @@ public class Canvas {
                         }
                         hasDragged = false;
                     } else {
+                        // Setup the first point if the polygon is completely empty
                         if (polygon.getSize() == 0) {
                             polygon = polygon.withPoint(new Point(e.getX(), e.getY()));
                         }
@@ -169,7 +170,14 @@ public class Canvas {
                             hasDragged = false;
                         }
                     } else {
-                        polygon = polygon.withPoint(new Point(e.getX(), e.getY()));
+                        // BONUS: Insert point into the closest edge if polygon has >= 3 vertices
+                        if (polygon.getSize() >= 3) {
+                            int edgeIndex = getClosestEdgeIndex(e.getX(), e.getY());
+                            polygon = polygon.insertPoint(edgeIndex + 1, new Point(e.getX(), e.getY()));
+                        } else {
+                            // Standard append for the 2nd and 3rd point
+                            polygon = polygon.withPoint(new Point(e.getX(), e.getY()));
+                        }
                     }
                     redraw();
                 }
@@ -212,13 +220,24 @@ public class Canvas {
                 lineRasterizer.draw(image, lineStartPoint.x(), lineStartPoint.y(), currentMousePoint.x(), currentMousePoint.y(), lineColor);
             }
         } else if (!isLineMode && polygon.getSize() > 0 && currentMousePoint != null && editPointIndex == -1) {
-            Point lastPoint = polygon.getPoint(polygon.getSize() - 1);
-            lineRasterizer.draw(image, lastPoint.x(), lastPoint.y(), currentMousePoint.x(), currentMousePoint.y(), polygonColor);
 
-            // Draw closing line back to the first point if the polygon has at least 2 points
-            if (polygon.getSize() > 1) {
-                Point firstPoint = polygon.getPoint(0);
-                lineRasterizer.draw(image, firstPoint.x(), firstPoint.y(), currentMousePoint.x(), currentMousePoint.y(), polygonColor);
+            // BONUS: Dynamically preview the split of the closest edge
+            if (polygon.getSize() >= 3) {
+                int edgeIndex = getClosestEdgeIndex(currentMousePoint.x(), currentMousePoint.y());
+                Point p1 = polygon.getPoint(edgeIndex);
+                Point p2 = polygon.getPoint((edgeIndex + 1) % polygon.getSize());
+                lineRasterizer.draw(image, p1.x(), p1.y(), currentMousePoint.x(), currentMousePoint.y(), polygonColor);
+                lineRasterizer.draw(image, p2.x(), p2.y(), currentMousePoint.x(), currentMousePoint.y(), polygonColor);
+            } else {
+                // Standard preview for the first few points
+                Point lastPoint = polygon.getPoint(polygon.getSize() - 1);
+                lineRasterizer.draw(image, lastPoint.x(), lastPoint.y(), currentMousePoint.x(), currentMousePoint.y(), polygonColor);
+
+                // Draw closing line back to the first point if the polygon has at least 2 points
+                if (polygon.getSize() > 1) {
+                    Point firstPoint = polygon.getPoint(0);
+                    lineRasterizer.draw(image, firstPoint.x(), firstPoint.y(), currentMousePoint.x(), currentMousePoint.y(), polygonColor);
+                }
             }
         }
 
